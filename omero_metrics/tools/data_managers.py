@@ -16,9 +16,48 @@ from omero_metrics.tools.data_type import (
     TEMPLATE_MAPPINGS_DATASET,
     TEMPLATE_MAPPINGS_IMAGE,
 )
+import pandas as pd
+import numpy as np
 
 
 logger = logging.getLogger(__name__)
+
+
+
+
+def _make_serializable(obj):
+    """Convert non-JSON-serializable objects to serializable formats."""
+    # Handle Pydantic models
+    if hasattr(obj, "dict"):
+        obj = obj.dict()
+    elif hasattr(obj, "model_dump"):
+        obj = obj.model_dump()
+
+    # Handle pandas Timestamp and datetime objects
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if isinstance(obj, datetime.date):
+        return obj.isoformat()
+
+    # Handle pandas DataFrame - convert Timestamp columns to strings first
+    if isinstance(obj, pd.DataFrame):
+        df = obj.copy()
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        return df.to_dict(orient='records')
+        
+    if isinstance(obj, np.ndarray):
+        if obj.size > 1000000:
+            return f"<Array too large: {obj.shape}>"
+        return obj.tolist()
+    if isinstance(obj, list):
+        return [_make_serializable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _make_serializable(v) for k, v in obj.items()}
+    return obj
 
 
 def warning_message(msg):
@@ -85,9 +124,9 @@ class ImageManager:
                         self.context = {
                             "image_index": self.image_index,
                             "image_id": self.mm_image.data_reference.omero_object_id,
-                            "mm_dataset": self.dataset_manager.mm_dataset,
-                            "channel_names": self.mm_image.channel_series,
-                            "image": self.mm_image.array_data,
+                            "mm_dataset": _make_serializable(self.dataset_manager.mm_dataset),
+                            "channel_names": _make_serializable(self.mm_image.channel_series),
+                            "image": _make_serializable(self.mm_image.array_data),
                         }
                     elif self.image_location == "output":
                         message = "No visualization for output images"
@@ -152,7 +191,7 @@ class DatasetManager:
         return self.processed
 
     def is_validated(self):
-        return self.mm_dataset.validated if self.mm_dataset else False
+        return self.mm_dataset.output.validated if self.mm_dataset else False
 
     def remove_unsupported_data(self):
         dump._remove_unsupported_types(self.mm_dataset.input_data)
@@ -254,7 +293,7 @@ class DatasetManager:
             delete.delete_dataset_file_ann(conn, self.omero_dataset)
         except Exception as e:
             logger.error(f"Error deleting processed data: {e}")
-            self.mm_dataset.validated = False
+            self.mm_dataset.output.validated = False
             raise e
         else:
             logger.info("Processed data deleted.")
@@ -263,18 +302,18 @@ class DatasetManager:
         pass
 
     def validate_data(self):
-        if not self.mm_dataset.processed:
+        if not self.mm_dataset.output.processed:
             logger.error("Data has not been processed. It cannot be validated")
-        if self.mm_dataset.validated:
+        if self.mm_dataset.output.validated:
             logger.warning("Data was already validated. Keeping unchanged.")
 
-        self.mm_dataset.validated = True
+        self.mm_dataset.output.validated = True
         logger.info("Validating dataset.")
 
     def invalidate_data(self):
-        if not self.mm_dataset.validated:
+        if not self.mm_dataset.output.validated:
             logger.warning("Data is already not validated. Keeping unchanged.")
-        self.mm_dataset.validated = False
+        self.mm_dataset.output.validated = False
         logger.info("Invalidating dataset.")
 
     def visualize_data(self):
@@ -293,7 +332,12 @@ class DatasetManager:
                         )
                     )
                     self.remove_unsupported_data()
-                self.context["mm_dataset"] = self.mm_dataset
+                if "image" in self.context:
+                     self.context["image"] = _make_serializable(self.context["image"])
+                if "channel_names" in self.context:
+                     self.context["channel_names"] = _make_serializable(self.context["channel_names"])
+
+                self.context["mm_dataset"] = _make_serializable(self.mm_dataset)
                 self.context["kkm"] = self.kkm
 
             else:
@@ -414,7 +458,9 @@ class ProjectManager:
                             description=self.omero_project.getDescription(),
                         )
                     )
-                    self.context["mm_datasets"] = self.mm_harmonized_dataset
+                    self.context["mm_datasets"] = _make_serializable(self.mm_harmonized_dataset)
+                    # Also serialize the whole context as it contains DataFrames from load.load_dash_data_project
+                    self.context = _make_serializable(self.context)
                     message = "Data loaded successfully"
                 else:
                     message = "This project contains unsupported analysis type. Unable to visualize"

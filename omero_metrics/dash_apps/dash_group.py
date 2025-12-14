@@ -177,7 +177,7 @@ dash_app_group.layout = dmc.MantineProvider(
                                                 w="auto",
                                             ),
                                             dcc.Download(id="download"),
-                                            dmc.DatePicker(
+                                            dmc.DatePickerInput(
                                                 id="date-picker",
                                                 label="Select Date Range",
                                                 valueFormat="DD-MM-YYYY",
@@ -274,7 +274,9 @@ dash_app_group.layout = dmc.MantineProvider(
     [dash.dependencies.Input("blank-input", "children")],
 )
 def update_date_range(*args, **kwargs):
-    df = kwargs["session_state"]["context"]["file_ann"]
+    file_ann_data = kwargs["session_state"]["context"]["file_ann"]
+    df = pd.DataFrame(file_ann_data)
+    df["Date"] = pd.to_datetime(df["Date"])
     min_date = df.Date.min()
     max_date = df.Date.max()
     return [min_date, max_date], min_date, max_date
@@ -308,7 +310,9 @@ def render_content(*args, **kwargs):
     prevent_initial_call=True,
 )
 def load_table_project(dates, **kwargs):
-    file_ann = kwargs["session_state"]["context"]["file_ann"]
+    file_ann_data = kwargs["session_state"]["context"]["file_ann"]
+    file_ann = pd.DataFrame(file_ann_data)
+    file_ann["Date"] = pd.to_datetime(file_ann["Date"])
     if dates is not None:
         file_ann = file_ann[
             (file_ann["Date"].dt.date >= pd.to_datetime(dates[0]).date())

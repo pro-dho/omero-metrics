@@ -47,6 +47,7 @@ services:
     platform: linux/amd64
     environment:
       OMEROHOST: omeroserver
+      OMEROWEB_GUNICORN_TIMEOUT: 600
     volumes:
       - type: bind
         source: ./omero_metrics

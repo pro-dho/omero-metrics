@@ -1,4 +1,4 @@
-from django.utils.datetime_safe import datetime
+from datetime import datetime
 from django.shortcuts import render
 from omeroweb.webclient.decorators import login_required
 from microscopemetrics_schema import datamodel as mm_schema
@@ -103,12 +103,21 @@ def center_viewer_group(request, conn=None, **kwargs):
         group = conn.getObject("ExperimenterGroup", active_group)
         group_name = group.getName()
         group_description = group.getDescription()
+        # Convert Timestamps to ISO format strings for JSON serialization
+        file_ann_serializable = file_ann.copy()
+        if 'Date' in file_ann_serializable.columns:
+            file_ann_serializable['Date'] = file_ann_serializable['Date'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        
+        map_ann_serializable = map_ann.copy()
+        if 'Date' in map_ann_serializable.columns:
+            map_ann_serializable['Date'] = map_ann_serializable['Date'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        
         context = {
             "group_id": active_group,
             "group_name": group_name,
             "group_description": group_description,
-            "file_ann": file_ann,
-            "map_ann": map_ann,
+            "file_ann": file_ann_serializable.to_dict(orient='records'),
+            "map_ann": map_ann_serializable.to_dict(orient='records'),
         }
         dash_context["context"] = context
         request.session["django_plotly_dash"] = dash_context
