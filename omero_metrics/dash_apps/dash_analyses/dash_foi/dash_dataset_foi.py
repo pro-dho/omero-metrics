@@ -183,12 +183,8 @@ dsc.register_download_table_callback(omero_dataset_foi)
 def update_dropdown_menu(*args, **kwargs):
     try:
         channel_names = kwargs["session_state"]["context"]["channel_names"]
-        dupes = {n for n in channel_names if channel_names.count(n) > 1}
         return [
-            {
-                "label": f"{name} (Ch {i})" if name in dupes else str(name),
-                "value": str(i),
-            }
+            {"label": str(name), "value": str(i)}
             for i, name in enumerate(channel_names)
         ], "0"
     except Exception as e:

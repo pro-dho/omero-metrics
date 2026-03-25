@@ -16,15 +16,6 @@ from omero_metrics.tools import load
 from omero_metrics.tools.serializers import deserialize, deserialize_partial
 
 logger = logging.getLogger(__name__)
-
-
-def _fmt_value(val, unit="", precision=3):
-    """Format a numeric value, returning 'N/A' for NaN/None."""
-    if val is None or (isinstance(val, float) and np.isnan(val)):
-        return "N/A"
-    return f"{val:.{precision}f}{unit}"
-
-
 dashboard_name = "omero_image_average_bead"
 
 omero_image_average_bead = DjangoDash(name=dashboard_name, serve_locally=True)
@@ -76,7 +67,7 @@ omero_image_average_bead.layout = dmc.MantineProvider(
                                                 ),
                                                 dcc.Graph(
                                                     figure={},
-                                                    style={"height": "750px"},
+                                                    style={"height": "400px"},
                                                     id="average_image_graph",
                                                 ),
                                             ],
@@ -393,7 +384,7 @@ def update_image(channel_index, color, invert, **kwargs):
                     x=0.5,
                     line_color="gray",
                     line_dash="dash",
-                    annotation_text=f"FWHM<br><b>{_fmt_value(fwhms[axis], physical_unit)}<b>",
+                    annotation_text=f"FWHM<br><b>{fwhms[axis]:.3f}{physical_unit}<b>",
                     annotation_align="right",
                     annotation_position="bottom right",
                     row=row,
@@ -418,7 +409,7 @@ def update_image(channel_index, color, invert, **kwargs):
                     y=0.5,
                     line_color="gray",
                     line_dash="dash",
-                    annotation_text=f"FWHM<br><b>{_fmt_value(fwhms[axis], physical_unit)}<b>",
+                    annotation_text=f"FWHM<br><b>{fwhms[axis]:.3f}{physical_unit}<b>",
                     annotation_align="right",
                     annotation_position="top right",
                     row=row,
@@ -439,7 +430,7 @@ def update_image(channel_index, color, invert, **kwargs):
                     range=[-0.25, 1.25], constrain="domain", row=row, col=col
                 )
             fig.add_annotation(
-                text=f"R^2<br><b>{_fmt_value(r_sq[axis])}<b>",
+                text=f"R^2<br><b>{r_sq[axis]:.3f}<b>",
                 align="right" if rotate else "left",
                 xanchor="left" if rotate else "right",
                 ax=20 if rotate else -40,
@@ -471,13 +462,13 @@ def update_image(channel_index, color, invert, **kwargs):
             legend=dict(
                 orientation="h",
                 yanchor="top",
-                y=-0.12,
+                y=-0.05,
                 xanchor="center",
                 x=0.5,
             ),
             autosize=True,
             height=750,
-            margin=dict(l=50, r=20, t=10, b=100),
+            margin=dict(l=40, r=10, t=10, b=60),
         )
 
         return fig
@@ -496,15 +487,10 @@ def update_image(channel_index, color, invert, **kwargs):
 )
 def update_channels_average_image(_, **kwargs):
     ctx = deserialize_partial(kwargs["session_state"]["context"], "mm_image")
-    channels = ctx["mm_image"].channel_series.channels
-    names = [c.name for c in channels]
-    dupes = {n for n in names if names.count(n) > 1}
+    channel_series = ctx["mm_image"].channel_series
     return [
-        {
-            "label": f"{c.name} (Ch {i})" if c.name in dupes else c.name,
-            "value": str(i),
-        }
-        for i, c in enumerate(channels)
+        {"label": c.name, "value": str(i)}
+        for i, c in enumerate(channel_series.channels)
     ], "0"
 
 
