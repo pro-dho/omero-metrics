@@ -249,10 +249,16 @@ omero_image_foi.layout = dmc.MantineProvider(
 )
 def callback_channel(_, **kwargs):
     ctx = deserialize_partial(kwargs["session_state"]["context"], "mm_image")
-    mm_image = ctx["mm_image"]
+    channels = ctx["mm_image"].channel_series.channels
+    names = [c.name for c in channels]
+    dupes = {n for n in names if names.count(n) > 1}
     return [
-        {"label": c.name, "value": str(i), "description": f"Channel {i+1}"}
-        for i, c in enumerate(mm_image.channel_series.channels)
+        {
+            "label": f"{c.name} (Ch {i})" if c.name in dupes else c.name,
+            "value": str(i),
+            "description": f"Channel {i + 1}",
+        }
+        for i, c in enumerate(channels)
     ], "0"
 
 

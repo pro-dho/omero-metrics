@@ -330,10 +330,15 @@ def update_image(channel_index, color, invert, contour, roi, beads_info, **kwarg
 )
 def update_channels_psf_image(_, **kwargs):
     context = deserialize(kwargs["session_state"]["context"])
-    channel_series = context["mm_image"].channel_series
+    channels = context["mm_image"].channel_series.channels
+    names = [c.name for c in channels]
+    dupes = {n for n in names if names.count(n) > 1}
     return [
-        {"label": c.name, "value": str(i)}
-        for i, c in enumerate(channel_series.channels)
+        {
+            "label": f"{c.name} (Ch {i})" if c.name in dupes else c.name,
+            "value": str(i),
+        }
+        for i, c in enumerate(channels)
     ], "0"
 
 

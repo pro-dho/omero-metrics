@@ -244,22 +244,26 @@ def _label_channels(image: ImageWrapper, labels: list):
             "The length of the channel labels is not of the same size as the size of the c dimension"
         )
     conn = image._conn
-    seen_lc_ids = {}
+    ctx = conn.SERVICE_OPTS.copy()
     for label, channel in zip(labels, image.getChannels(noRE=True)):
-        logical_channel = channel.getLogicalChannel()
-        lc_id = logical_channel.getId()
-        if lc_id in seen_lc_ids:
-            # This LogicalChannel is shared with another channel.
-            # Create a new unique LogicalChannel to avoid name overwrites.
-            new_lc = LogicalChannelI()
-            new_lc.setName(rstring(label))
-            new_lc = conn.getUpdateService().saveAndReturnObject(new_lc)
-            channel._obj.setLogicalChannel(new_lc)
-            conn.getUpdateService().saveObject(channel._obj)
-        else:
-            seen_lc_ids[lc_id] = True
-            logical_channel.setName(label)
-            logical_channel.save()
+        # Always create a new LogicalChannel for each channel.
+        # Reusing existing LCs is unsafe: when an image is created with
+        # sourceImageId, OMERO shares the source's LogicalChannel objects.
+        # Renaming a shared LC would silently corrupt the source image's
+        # channel names (e.g. output average_bead with 3 channels shifts
+        # the 4-channel input's names → FITC,TRITC,CY5,CY5).
+        new_lc = LogicalChannelI()
+        new_lc.setName(rstring(label))
+        new_lc = conn.getUpdateService().saveAndReturnObject(new_lc, ctx)
+        # Reload the Channel from the server to get a fresh copy.
+        # Saving the previous channel may update the parent Pixels object,
+        # making stale in-memory channel objects throw
+        # OptimisticLockException.
+        ch_obj = conn.getQueryService().get(
+            "Channel", channel._obj.id.val, ctx
+        )
+        ch_obj.setLogicalChannel(new_lc)
+        conn.getUpdateService().saveObject(ch_obj, ctx)
 
 
 def _get_image_shape(image: ImageWrapper):
