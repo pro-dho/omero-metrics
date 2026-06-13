@@ -37,6 +37,9 @@ omero_dataset_foi.layout = dmc.MantineProvider(
         ),
         dmc.Container(
             children=[
+                # Summary Statistics
+                dsc.summary_statistics_panel("FieldIlluminationDataset"),
+                dmc.Space(h="md"),
                 # Main Content
                 dmc.Grid(
                     gutter="md",
@@ -161,6 +164,34 @@ omero_dataset_foi.layout = dmc.MantineProvider(
                     radius="md",
                     mt="md",
                 ),
+                # Metric Reference
+                dmc.Space(h="md"),
+                dsc.metric_info_accordion(
+                    "FieldIlluminationDataset",
+                    [
+                        "max_intensity",
+                        "center_region_intensity_fraction",
+                        "center_region_area_fraction",
+                        "center_of_mass_y_relative",
+                        "center_of_mass_x_relative",
+                        "center_of_mass_distance_relative",
+                        "center_fitted_y_relative",
+                        "center_fitted_x_relative",
+                        "center_fitted_distance_relative",
+                        "max_intensity_pos_y_relative",
+                        "max_intensity_pos_x_relative",
+                        "max_intensity_distance_relative",
+                        "top_left_intensity_ratio",
+                        "top_center_intensity_ratio",
+                        "top_right_intensity_ratio",
+                        "middle_left_intensity_ratio",
+                        "middle_center_intensity_ratio",
+                        "middle_right_intensity_ratio",
+                        "bottom_left_intensity_ratio",
+                        "bottom_center_intensity_ratio",
+                        "bottom_right_intensity_ratio",
+                    ],
+                ),
             ],
             style=CONTAINER_STYLE,
         ),
@@ -173,6 +204,7 @@ dsc.register_delete_dataset_callback(omero_dataset_foi)
 dsc.register_download_datasets_callback(omero_dataset_foi)
 dsc.register_update_kkm_table_callback(omero_dataset_foi)
 dsc.register_download_table_callback(omero_dataset_foi)
+dsc.register_summary_stats_callback(omero_dataset_foi)
 
 
 @omero_dataset_foi.expanded_callback(

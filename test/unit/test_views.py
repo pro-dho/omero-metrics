@@ -127,4 +127,6 @@ class TestViewErrorHandling:
         call_kwargs = mock_render.call_args
         assert call_kwargs[1]["context"]["app_name"] == "ErrorApp"
         dash_ctx = request.session["django_plotly_dash"]["context"]
-        assert "Load failed" in dash_ctx["message"]
+        # Error message should be user-safe (no internal details)
+        assert "message" in dash_ctx
+        assert "traceback" not in dash_ctx

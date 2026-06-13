@@ -19,6 +19,68 @@ FIELD_TYPE_MAPPING = {
     str: [dmc.TextInput, "carbon:string-text"],
 }
 
+# Help text shown below each form field via the `description` prop.
+# Keys follow the pattern "ClassName:field_name" or just "field_name"
+# for fields shared across multiple parameter classes.
+FIELD_DESCRIPTIONS = {
+    # FieldIlluminationInputParameters
+    "saturation_threshold": (
+        "Fraction of the detector dynamic range considered saturated (0-1). "
+        "Pixels above this threshold are flagged."
+    ),
+    "corner_fraction": (
+        "Fraction of the image width/height used to define corner regions "
+        "for uniformity analysis (e.g. 0.1 = 10%)."
+    ),
+    "sigma": (
+        "Standard deviation of the Gaussian filter applied to smooth the "
+        "illumination image before analysis (in pixels)."
+    ),
+    "bit_depth": (
+        "Bit depth of the input images (e.g. 8, 12, 16). "
+        "Leave empty to auto-detect from the image data."
+    ),
+    # PSFBeadsInputParameters
+    "min_lateral_distance_factor": (
+        "Minimum distance between beads as a factor of the PSF FWHM. "
+        "Beads closer than this are excluded to avoid overlap."
+    ),
+    "sigma_min": (
+        "Minimum sigma for Gaussian fitting of the PSF (in pixels). "
+        "Defines the lower bound of the expected PSF width."
+    ),
+    "sigma_max": (
+        "Maximum sigma for Gaussian fitting of the PSF (in pixels). "
+        "Defines the upper bound of the expected PSF width."
+    ),
+    "snr_threshold": (
+        "Minimum signal-to-noise ratio for a bead to be considered valid. "
+        "Beads below this are excluded from statistics."
+    ),
+    "fitting_gaussian_r2_threshold": (
+        "Minimum R-squared for the Gaussian fit. "
+        "Beads with Gaussian fits below this threshold are rejected."
+    ),
+    "fitting_airy_r2_threshold": (
+        "Minimum R-squared for the Airy disk fit. "
+        "Beads with Airy fits below this threshold are rejected."
+    ),
+    "intensity_robust_z_score_threshold": (
+        "Z-score threshold for robust intensity outlier detection. "
+        "Beads with intensity z-scores above this are excluded."
+    ),
+    # Sample fields
+    "name": "Name identifier for this sample or configuration.",
+    "description": "Free-text description providing additional context.",
+    "manufacturer": "Manufacturer or vendor of the reference sample.",
+    "preparation_protocol": "URL or reference to the sample preparation protocol.",
+    "preparation_datetime": "Date and time when the sample was prepared.",
+    "bead_diameter_micron": (
+        "Diameter of the fluorescent beads in micrometers. "
+        "Typically 0.1 \u00b5m (100 nm) for sub-resolution PSF measurements."
+    ),
+}
+
 
 def extract_form_data(form_content):
     return {
@@ -64,6 +126,15 @@ def get_field_types(field):
     return data_type
 
 
+def _get_field_description(class_name, field_name):
+    """Look up help text for a form field."""
+    # Try class-specific key first, then generic field name
+    return FIELD_DESCRIPTIONS.get(
+        f"{class_name}:{field_name}",
+        FIELD_DESCRIPTIONS.get(field_name, None),
+    )
+
+
 def get_dmc_field_input(field, mm_object, disabled=False):
     field_info = get_field_types(field)
     input_field_name = FIELD_TYPE_MAPPING[field_info["type"]][0]
@@ -83,6 +154,24 @@ def get_dmc_field_input(field, mm_object, disabled=False):
         icon=FIELD_TYPE_MAPPING[field_info["type"]][1]
     )
     input_field.mb = "sm"
+
+    # Add a help icon in the right section that shows a tooltip on hover
+    help_text = _get_field_description(mm_object.class_name, field_info["field_name"])
+    if help_text:
+        input_field.rightSection = dmc.Tooltip(
+            dmc.ActionIcon(
+                DashIconify(icon="material-symbols:help-outline", height=16),
+                variant="subtle",
+                color="gray",
+                size="sm",
+            ),
+            label=help_text,
+            multiline=True,
+            w=280,
+            withArrow=True,
+            position="left",
+        )
+        input_field.rightSectionPointerEvents = "auto"
 
     return input_field
 

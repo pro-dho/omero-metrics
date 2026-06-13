@@ -99,17 +99,23 @@ omero_image_psf_beads.layout = dmc.MantineProvider(
                                                             label="Channel Selection",
                                                             labelPosition="center",
                                                         ),
-                                                        dmc.Select(
-                                                            id="channel_selector_psf_image",
-                                                            label="Channel",
-                                                            w="100%",
-                                                            allowDeselect=False,
-                                                            leftSection=my_components.get_icon(
-                                                                "material-symbols:layers"
+                                                        dmc.Tooltip(
+                                                            dmc.Select(
+                                                                id="channel_selector_psf_image",
+                                                                label="Channel",
+                                                                w="100%",
+                                                                allowDeselect=False,
+                                                                leftSection=my_components.get_icon(
+                                                                    "material-symbols:layers"
+                                                                ),
+                                                                rightSection=my_components.get_icon(
+                                                                    "radix-icons:chevron-down"
+                                                                ),
                                                             ),
-                                                            rightSection=my_components.get_icon(
-                                                                "radix-icons:chevron-down"
-                                                            ),
+                                                            label="Select the fluorescence channel to display",
+                                                            withArrow=True,
+                                                            position="top-start",
+                                                            openDelay=400,
                                                         ),
                                                         dmc.Divider(
                                                             label="Display Options",

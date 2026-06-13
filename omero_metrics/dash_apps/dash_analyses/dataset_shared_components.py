@@ -15,6 +15,7 @@ from omero_metrics.styles import (
     THEME,
 )
 from omero_metrics.tools import load
+from omero_metrics.tools.metric_descriptions import get_description
 from omero_metrics.tools.serializers import deserialize, deserialize_partial
 
 
@@ -128,13 +129,16 @@ def dataset_table_paper():
                                 [
                                     omero_metrics_components.download_table,
                                     dmc.Tooltip(
-                                        label="Key measurements for all the channels",
+                                        label="Key measurements for all channels. Hover column headers for metric descriptions.",
                                         children=[
                                             omero_metrics_components.get_icon(
                                                 icon="material-symbols:info",
                                                 color=THEME["primary"],
                                             )
                                         ],
+                                        withArrow=True,
+                                        multiline=True,
+                                        w=280,
                                     ),
                                 ]
                             ),
@@ -237,6 +241,179 @@ delete_button = dmc.Button(
 )
 
 
+def _stat_card(label, value, unit="", icon=None, color=None):
+    """Single statistic display card."""
+    color = color or THEME["primary"]
+    icon_el = (
+        omero_metrics_components.get_icon(icon=icon, size=20, color=color)
+        if icon
+        else None
+    )
+    return dmc.Paper(
+        children=dmc.Stack(
+            [
+                dmc.Group(
+                    [
+                        icon_el,
+                        dmc.Text(label, size="xs", c=THEME["text"]["secondary"], fw=500),
+                    ] if icon_el else [
+                        dmc.Text(label, size="xs", c=THEME["text"]["secondary"], fw=500),
+                    ],
+                    gap="xs",
+                ),
+                dmc.Group(
+                    [
+                        dmc.Text(
+                            f"{value}" if not isinstance(value, float) else f"{value:.3f}",
+                            size="xl",
+                            fw=700,
+                            c=THEME["text"]["primary"],
+                        ),
+                        dmc.Text(unit, size="xs", c=THEME["text"]["muted"]) if unit else None,
+                    ],
+                    gap=4,
+                    align="baseline",
+                ),
+            ],
+            gap=4,
+        ),
+        p="md",
+        radius="md",
+        withBorder=True,
+        style={
+            "borderLeft": f"3px solid {color}",
+            "minWidth": "140px",
+        },
+    )
+
+
+def summary_statistics_panel(dataset_class=None):
+    """Summary statistics panel — populated by callback."""
+    return dmc.Paper(
+        id="summary-stats-panel",
+        children=[
+            dmc.Group(
+                [
+                    dmc.Text(
+                        "Summary",
+                        fw=600,
+                        size="lg",
+                    ),
+                    dmc.Tooltip(
+                        label="Key performance indicators at a glance",
+                        children=[
+                            omero_metrics_components.get_icon(
+                                icon="material-symbols:info",
+                                color=THEME["primary"],
+                            )
+                        ],
+                    ),
+                ],
+                justify="space-between",
+                mb="md",
+            ),
+            dmc.SimpleGrid(
+                id="summary-stat-cards",
+                cols={"base": 2, "sm": 3, "lg": 5},
+                spacing="sm",
+            ),
+        ],
+        **CONTENT_PAPER_STYLE,
+    )
+
+
+def metric_info_accordion(dataset_class, kkm_list):
+    """Accordion showing metric descriptions grouped by category."""
+    from omero_metrics.tools.metric_descriptions import get_category_groups
+
+    groups = get_category_groups(dataset_class, kkm_list)
+    items = []
+    for category, keys in groups.items():
+        rows = []
+        for key in keys:
+            desc = get_description(dataset_class, key)
+            rows.append(
+                dmc.Group(
+                    [
+                        dmc.Stack(
+                            [
+                                dmc.Group(
+                                    [
+                                        dmc.Text(
+                                            desc["label"],
+                                            fw=600,
+                                            size="sm",
+                                        ),
+                                        dmc.Badge(
+                                            desc["unit"],
+                                            size="xs",
+                                            variant="light",
+                                            color="gray",
+                                        ) if desc["unit"] else None,
+                                    ],
+                                    gap="xs",
+                                ),
+                                dmc.Text(
+                                    desc["description"],
+                                    size="xs",
+                                    c=THEME["text"]["secondary"],
+                                ),
+                            ],
+                            gap=2,
+                        ),
+                    ],
+                    p="xs",
+                    style={
+                        "borderBottom": f"1px solid {THEME['border_light']}",
+                    },
+                )
+            )
+        items.append(
+            dmc.AccordionItem(
+                [
+                    dmc.AccordionControl(
+                        dmc.Group(
+                            [
+                                dmc.Text(category, fw=600, size="sm"),
+                                dmc.Badge(
+                                    str(len(keys)),
+                                    size="xs",
+                                    variant="filled",
+                                    color=THEME["primary"],
+                                    circle=True,
+                                ),
+                            ],
+                            gap="sm",
+                        )
+                    ),
+                    dmc.AccordionPanel(children=rows),
+                ],
+                value=category,
+            )
+        )
+    return dmc.Paper(
+        children=[
+            dmc.Group(
+                [
+                    dmc.Text("Metric Reference", fw=600, size="lg"),
+                    omero_metrics_components.get_icon(
+                        icon="material-symbols:library-books",
+                        color=THEME["primary"],
+                    ),
+                ],
+                justify="space-between",
+                mb="md",
+            ),
+            dmc.Accordion(
+                children=items,
+                variant="separated",
+                radius="md",
+            ),
+        ],
+        **CONTENT_PAPER_STYLE,
+    )
+
+
 # CALLBACKS
 def register_delete_dataset_callback(app):
     @app.expanded_callback(
@@ -291,7 +468,7 @@ def register_download_datasets_callback(app):
         dl_yaml_n_clicks, dl_json_n_clicks, dl_text_n_clicks, **kwargs
     ):
         if not kwargs["callback_context"].triggered:
-            raise no_update
+            return no_update
 
         triggered_id = (
             kwargs["callback_context"].triggered[0]["prop_id"].split(".")[0]
@@ -318,7 +495,28 @@ def register_download_datasets_callback(app):
                 content=yaml_dumper.dumps(mm_dataset), filename=f"{file_name}.txt"
             )
 
-        raise no_update
+        return no_update
+
+
+def _build_header_with_tooltip(col_key, dataset_class):
+    """Build a table header element with a tooltip showing the metric description."""
+    desc = get_description(dataset_class, col_key)
+    display_name = col_key.replace("_", " ").title()
+    if desc["description"]:
+        return dmc.Tooltip(
+            dmc.Text(
+                display_name,
+                size="xs",
+                fw=600,
+                style={"cursor": "help", "borderBottom": "1px dotted #8a9b8e"},
+            ),
+            label=desc["description"],
+            withArrow=True,
+            multiline=True,
+            w=300,
+            position="top",
+        )
+    return display_name
 
 
 def register_update_kkm_table_callback(app):
@@ -336,20 +534,26 @@ def register_update_kkm_table_callback(app):
                 kwargs["session_state"]["context"], "key_measurements_df"
             )
             kkm = kwargs["session_state"]["context"]["kkm"]
+            dataset_class = kwargs["session_state"]["context"].get("dataset_class", "")
             table_km = context["key_measurements_df"]
             start_idx = (page - 1) * 4
             end_idx = start_idx + 4
-            metrics_df = table_km.filter(["channel_name", *kkm])
-            metrics_df = metrics_df.dropna(axis=1, how="all")
+            columns = ["channel_name"] + [
+                k for k in kkm if k in table_km.columns
+            ]
+            metrics_df = table_km[columns]
             metrics_df = metrics_df.round(3)
-            metrics_df.columns = metrics_df.columns.str.replace(
-                "_", " ", regex=True
-            ).str.title()
+
+            # Build headers with tooltips
+            headers = ["Channel"]
+            for col in columns[1:]:
+                headers.append(_build_header_with_tooltip(col, dataset_class))
+
             page_data = metrics_df.iloc[start_idx:end_idx]
             return {
-                "head": page_data.columns.tolist(),
+                "head": headers,
                 "body": page_data.values.tolist(),
-                "caption": "Statistical measurements across channels",
+                "caption": "Hover column headers for metric descriptions",
             }, math.ceil(len(metrics_df) / 4)
         except Exception as e:
             return {
@@ -373,7 +577,7 @@ def register_download_table_callback(app):
         tb_dw_csv_clicks, tb_dw_xlsx_clicks, tb_dw_json_clicks, **kwargs
     ):
         if not kwargs["callback_context"].triggered:
-            raise no_update
+            return no_update
 
         triggered_id = (
             kwargs["callback_context"].triggered[0]["prop_id"].split(".")[0]
@@ -383,7 +587,8 @@ def register_download_table_callback(app):
         )
         table_km = context["key_measurements_df"]
         kkm = kwargs["session_state"]["context"]["kkm"]
-        table_kkm = table_km.filter(["channel_name", *kkm])
+        columns = ["channel_name"] + [k for k in kkm if k in table_km.columns]
+        table_kkm = table_km[columns]
         table_kkm = table_kkm.round(3)
         table_kkm.columns = table_kkm.columns.str.replace("_", " ").str.title()
         if triggered_id == "table-download-csv":
@@ -393,4 +598,59 @@ def register_download_table_callback(app):
         elif triggered_id == "table-download-json":
             return dcc.send_data_frame(table_kkm.to_json, "km_table.json")
 
-        raise no_update
+        return no_update
+
+
+def register_summary_stats_callback(app):
+    """Populate summary statistics cards from key measurements."""
+
+    @app.expanded_callback(
+        dependencies.Output("summary-stat-cards", "children"),
+        [dependencies.Input("kkm_table_pagination", "value")],
+    )
+    def update_summary_stats(_, **kwargs):
+        try:
+            context = deserialize_partial(
+                kwargs["session_state"]["context"], "key_measurements_df"
+            )
+            dataset_class = kwargs["session_state"]["context"].get("dataset_class", "")
+            kkm = kwargs["session_state"]["context"]["kkm"]
+            table_km = context["key_measurements_df"]
+            cards = []
+
+            # Pick highlight metrics based on dataset type
+            if "FieldIllumination" in dataset_class:
+                highlights = [
+                    ("center_region_intensity_fraction", "material-symbols:center-focus-strong", THEME["primary"]),
+                    ("max_intensity", "material-symbols:brightness-high", THEME["accent"]),
+                    ("center_of_mass_distance_relative", "material-symbols:my-location", "#d69e2e"),
+                    ("middle_center_intensity_ratio", "material-symbols:grid-on", THEME["secondary"]),
+                    ("center_fitted_distance_relative", "material-symbols:target", "#3182ce"),
+                ]
+            elif "PSFBeads" in dataset_class:
+                highlights = [
+                    ("considered_valid_count", "material-symbols:check-circle", THEME["primary"]),
+                    ("total_bead_count", "material-symbols:scatter-plot", THEME["accent"]),
+                    ("fwhm_pixel_x_mean", "material-symbols:width", "#d69e2e"),
+                    ("fwhm_pixel_y_mean", "material-symbols:height", "#3182ce"),
+                    ("fwhm_pixel_z_mean", "material-symbols:layers", THEME["secondary"]),
+                ]
+            else:
+                highlights = [(k, "material-symbols:analytics", THEME["primary"]) for k in kkm[:5]]
+
+            for metric_key, icon, color in highlights:
+                if metric_key in table_km.columns:
+                    desc = get_description(dataset_class, metric_key)
+                    mean_val = table_km[metric_key].mean()
+                    cards.append(
+                        _stat_card(
+                            label=desc["label"],
+                            value=mean_val,
+                            unit=desc["unit"],
+                            icon=icon,
+                            color=color,
+                        )
+                    )
+            return cards
+        except Exception:
+            return []

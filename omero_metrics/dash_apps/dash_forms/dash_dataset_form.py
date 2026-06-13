@@ -117,7 +117,24 @@ dash_form_dataset.layout = dmc.MantineProvider(
                                                                 dmc.Stack(
                                                                     [
                                                                         dmc.MultiSelect(
-                                                                            label="Select Images",
+                                                                            label=dmc.Group(
+                                                                                [
+                                                                                    "Select Images",
+                                                                                    dmc.Tooltip(
+                                                                                        my_components.get_icon(
+                                                                                            icon="material-symbols:help-outline",
+                                                                                            size=16,
+                                                                                            color="dimmed",
+                                                                                        ),
+                                                                                        label="Choose which images from this dataset to include in the analysis",
+                                                                                        withArrow=True,
+                                                                                        multiline=True,
+                                                                                        w=260,
+                                                                                        position="right",
+                                                                                    ),
+                                                                                ],
+                                                                                gap=4,
+                                                                            ),
                                                                             placeholder="Choose images to process",
                                                                             id="framework-multi-select",
                                                                             clearable=True,
@@ -135,7 +152,24 @@ dash_form_dataset.layout = dmc.MantineProvider(
                                                                         ),
                                                                         dmc.Textarea(
                                                                             id="comment",
-                                                                            label="Analysis Notes",
+                                                                            label=dmc.Group(
+                                                                                [
+                                                                                    "Analysis Notes",
+                                                                                    dmc.Tooltip(
+                                                                                        my_components.get_icon(
+                                                                                            icon="material-symbols:help-outline",
+                                                                                            size=16,
+                                                                                            color="dimmed",
+                                                                                        ),
+                                                                                        label="Optional notes recorded with the analysis results (e.g. conditions, observations)",
+                                                                                        withArrow=True,
+                                                                                        multiline=True,
+                                                                                        w=260,
+                                                                                        position="right",
+                                                                                    ),
+                                                                                ],
+                                                                                gap=4,
+                                                                            ),
                                                                             placeholder="Add analysis comments or notes...",
                                                                             autosize=True,
                                                                             minRows=3,

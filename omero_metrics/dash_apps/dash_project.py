@@ -5,6 +5,7 @@ import dash
 import dash_mantine_components as dmc
 import pandas as pd
 from dash import html
+from dash_iconify import DashIconify
 from django_plotly_dash import DjangoDash
 from linkml_runtime.dumpers import JSONDumper, YAMLDumper
 from microscopemetrics_schema import datamodel as mm_schema
@@ -25,7 +26,8 @@ from omero_metrics.styles import (
     THEME,
 )
 from omero_metrics.tools import dash_forms_tools as dft
-from omero_metrics.tools.serializers import deserialize
+from omero_metrics.tools.metric_descriptions import get_description
+from omero_metrics.tools.serializers import deserialize, deserialize_partial
 
 # Initialize the Dash app
 dashboard_name = "omero_project_dash"
@@ -128,37 +130,49 @@ omero_project_dash.layout = dmc.MantineProvider(
                                             dmc.GridCol(
                                                 span=6,
                                                 children=[
-                                                    dmc.Select(
-                                                        id="key-measurement-dropdown",
-                                                        label="Select Measurement",
-                                                        placeholder="Choose a measurement",
-                                                        leftSection=my_components.get_icon(
-                                                            icon="ph:magnifying-glass"
+                                                    dmc.Tooltip(
+                                                        dmc.Select(
+                                                            id="key-measurement-dropdown",
+                                                            label="Select Measurement",
+                                                            placeholder="Choose a measurement",
+                                                            leftSection=my_components.get_icon(
+                                                                icon="ph:magnifying-glass"
+                                                            ),
+                                                            disabled=True,
+                                                            rightSection=my_components.get_icon(
+                                                                icon="ph:caret-down"
+                                                            ),
+                                                            allowDeselect=False,
+                                                            styles=SELECT_STYLES,
                                                         ),
-                                                        disabled=True,
-                                                        rightSection=my_components.get_icon(
-                                                            icon="ph:caret-down"
-                                                        ),
-                                                        allowDeselect=False,
-                                                        styles=SELECT_STYLES,
+                                                        label="Choose a key metric to track over time across datasets",
+                                                        withArrow=True,
+                                                        position="top-start",
+                                                        openDelay=400,
                                                     ),
                                                 ],
                                             ),
                                             dmc.GridCol(
                                                 span=6,
                                                 children=[
-                                                    dmc.DatePickerInput(
-                                                        id="date-picker",
-                                                        label="Date Range",
-                                                        type="range",
-                                                        valueFormat="DD-MM-YYYY",
-                                                        placeholder="Select date range",
-                                                        leftSection=my_components.get_icon(
-                                                            icon="ph:calendar"
+                                                    dmc.Tooltip(
+                                                        dmc.DatePickerInput(
+                                                            id="date-picker",
+                                                            label="Date Range",
+                                                            type="range",
+                                                            valueFormat="DD-MM-YYYY",
+                                                            placeholder="Select date range",
+                                                            leftSection=my_components.get_icon(
+                                                                icon="ph:calendar"
+                                                            ),
+                                                            miw=150,
+                                                            disabled=True,
+                                                            styles=DATEPICKER_STYLES,
                                                         ),
-                                                        miw=150,
-                                                        disabled=True,
-                                                        styles=DATEPICKER_STYLES,
+                                                        label="Filter measurements by acquisition date range",
+                                                        withArrow=True,
+                                                        position="top-start",
+                                                        openDelay=400,
                                                     ),
                                                 ],
                                             ),
@@ -603,8 +617,7 @@ def update_config_project(submit_click, sample_form, input_form, **kwargs):
         except Exception as e:
             return my_components.alert_handler(
                 "unidentified error",
-                str(e),
-                response_details=traceback.format_exc(),
+                "Failed to save configuration. Please try again or contact support.",
                 with_close_button=True,
                 duration=3000,
             )
@@ -618,20 +631,6 @@ def update_config_project(submit_click, sample_form, input_form, **kwargs):
             duration=3000,
         )
 
-
-@omero_project_dash.expanded_callback(
-    dash.dependencies.Output("thresholds-dropdown", "data"),
-    [dash.dependencies.Input("blank-input", "children")],
-)
-def update_thresholds(*args, **kwargs):
-    try:
-        kkm = kwargs["session_state"]["context"]["kkm"]
-        # TODO: Move to kkm titles if and once implemented
-        kkm = [k.replace("_", " ").title() for k in kkm]
-        data = [{"value": f"{i}", "label": f"{k}"} for i, k in enumerate(kkm)]
-        return data
-    except Exception as e:
-        return dash.no_update
 
 
 @omero_project_dash.expanded_callback(
@@ -653,55 +652,93 @@ def update_thresholds_controls(*args, **kwargs):
     try:
         context = kwargs["session_state"]["context"]
         kkm = context["kkm"]
+        dataset_class = context.get("dataset_class", "")
         threshold = context["thresholds"]
         if threshold:
             new_kkm = threshold
         else:
             new_kkm = {k: {"upper_limit": "", "lower_limit": ""} for k in kkm}
 
-        threshold_control = [
-            dmc.AccordionItem(
-                [
-                    my_components.make_control(
-                        key.replace("_", " ").title(),
-                        f"action-{i}",
-                    ),
-                    dmc.AccordionPanel(
-                        id=key + "_panel",
-                        children=[
-                            dmc.Fieldset(
-                                id=key + "_fieldset",
-                                children=[
-                                    dmc.NumberInput(
-                                        label="Upper Limit",
-                                        placeholder="Enter upper limit",
-                                        leftSection=my_components.get_icon(
-                                            icon="hugeicons:chart-maximum",
-                                            color=THEME["primary"],
-                                        ),
-                                        value=value.get("upper_limit", ""),
-                                    ),
-                                    dmc.NumberInput(
-                                        label="Lower Limit",
-                                        placeholder="Enter lower limit",
-                                        leftSection=my_components.get_icon(
-                                            icon="hugeicons:chart-minimum",
-                                            color=THEME["primary"],
-                                        ),
-                                        value=value.get("lower_limit", ""),
-                                    ),
-                                ],
-                                variant="filled",
-                                radius="md",
-                                style={"padding": "10px", "margin": "10px"},
-                            )
-                        ],
-                    ),
-                ],
-                value=f"item-{i}",
+        threshold_control = []
+        for i, (key, value) in enumerate(new_kkm.items()):
+            desc = get_description(dataset_class, key)
+            panel_children = []
+            if desc["description"]:
+                panel_children.append(
+                    dmc.Text(
+                        desc["description"],
+                        size="xs",
+                        c=THEME["text"]["secondary"],
+                        mb="sm",
+                    )
+                )
+            panel_children.append(
+                dmc.Fieldset(
+                    id=key + "_fieldset",
+                    children=[
+                        dmc.NumberInput(
+                            label="Upper Limit",
+                            placeholder="Enter upper limit",
+                            leftSection=my_components.get_icon(
+                                icon="hugeicons:chart-maximum",
+                                color=THEME["primary"],
+                            ),
+                            rightSection=dmc.Tooltip(
+                                dmc.ActionIcon(
+                                    DashIconify(icon="material-symbols:help-outline", height=16),
+                                    variant="subtle",
+                                    color="gray",
+                                    size="sm",
+                                ),
+                                label="Values above this limit will be flagged on the trend chart",
+                                withArrow=True,
+                                position="left",
+                            ),
+                            rightSectionPointerEvents="auto",
+                            value=value.get("upper_limit", ""),
+                        ),
+                        dmc.NumberInput(
+                            label="Lower Limit",
+                            placeholder="Enter lower limit",
+                            leftSection=my_components.get_icon(
+                                icon="hugeicons:chart-minimum",
+                                color=THEME["primary"],
+                            ),
+                            rightSection=dmc.Tooltip(
+                                dmc.ActionIcon(
+                                    DashIconify(icon="material-symbols:help-outline", height=16),
+                                    variant="subtle",
+                                    color="gray",
+                                    size="sm",
+                                ),
+                                label="Values below this limit will be flagged on the trend chart",
+                                withArrow=True,
+                                position="left",
+                            ),
+                            rightSectionPointerEvents="auto",
+                            value=value.get("lower_limit", ""),
+                        ),
+                    ],
+                    variant="filled",
+                    radius="md",
+                    style={"padding": "10px", "margin": "10px"},
+                )
             )
-            for i, (key, value) in enumerate(new_kkm.items())
-        ]
+            threshold_control.append(
+                dmc.AccordionItem(
+                    [
+                        my_components.make_control(
+                            key.replace("_", " ").title(),
+                            f"action-{i}",
+                        ),
+                        dmc.AccordionPanel(
+                            id=key + "_panel",
+                            children=panel_children,
+                        ),
+                    ],
+                    value=f"item-{i}",
+                )
+            )
         button = dmc.Button(
             "Update",
             id="modal-submit-button",
@@ -709,7 +746,7 @@ def update_thresholds_controls(*args, **kwargs):
         )
         return threshold_control, button
     except Exception as e:
-        return dash.no_update
+        return dash.no_update, dash.no_update
 
 
 @omero_project_dash.expanded_callback(
@@ -741,7 +778,7 @@ def threshold_callback1(*args, **kwargs):
         else:
             return dash.no_update, False
     except Exception as e:
-        return dash.no_update
+        return dash.no_update, False
 
 
 def get_accordion_data(accordion_state, kkm):
@@ -805,7 +842,7 @@ def delete_project(*args, **kwargs):
         else:
             return opened, None, False
     except Exception as e:
-        return dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update
 
 
 @omero_project_dash.expanded_callback(
@@ -820,35 +857,38 @@ def delete_project(*args, **kwargs):
 def download_project_data(*args, **kwargs):
     try:
         if not kwargs["callback_context"].triggered:
-            raise dash.no_update
+            return dash.no_update
 
         triggered_id = (
             kwargs["callback_context"].triggered[0]["prop_id"].split(".")[0]
         )
         context = kwargs["session_state"]["context"]
-        mm_datasets = deserialize(context.get("mm_datasets"))
+        deserialized = deserialize_partial(context, "mm_dataset_collection")
+        mm_dataset_collection = deserialized.get("mm_dataset_collection")
+        if mm_dataset_collection is None:
+            return dash.no_update
         file_name = context["project_name"]
         yaml_dumper = YAMLDumper()
         json_dumper = JSONDumper()
         if triggered_id == "download-yaml":
             return dict(
-                content=yaml_dumper.dumps(mm_datasets),
+                content=yaml_dumper.dumps(mm_dataset_collection),
                 filename=f"{file_name}.yaml",
             )
 
         elif triggered_id == "download-json":
             return dict(
-                content=json_dumper.dumps(mm_datasets),
+                content=json_dumper.dumps(mm_dataset_collection),
                 filename=f"{file_name}.json",
             )
 
         elif triggered_id == "download-text":
             return dict(
-                content=yaml_dumper.dumps(mm_datasets),
+                content=yaml_dumper.dumps(mm_dataset_collection),
                 filename=f"{file_name}.txt",
             )
 
-        raise dash.no_update
+        return dash.no_update
     except Exception as e:
         return dash.no_update
 

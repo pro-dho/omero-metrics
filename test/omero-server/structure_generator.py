@@ -474,16 +474,46 @@ if __name__ == "__main__":
 
                 if project["process"]:
                     for dataset in mm_project.dataset_collection:
-                        DATASET_TO_ANALYSIS[project["dataset_class"]](dataset)
+                        try:
+                            print(f"  Running analysis on {dataset.name}...")
+                            DATASET_TO_ANALYSIS[project["dataset_class"]](dataset)
+                            print(
+                                f"  Analysis complete: processed={dataset.processed}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Analysis failed for dataset {dataset.name}: {e}"
+                            )
+                            print(
+                                f"  WARNING: Analysis failed for {dataset.name}: {e}"
+                            )
 
-                    omero_project = dump.dump_project(
-                        temp_conn,
-                        mm_project,
-                        dump_input_images=False,  # We anyway want to dump test input images
-                        dump_analysis=True,
-                        dump_as_project_file_annotation=True,
-                        dump_as_dataset_file_annotation=True,
-                    )
+                    # Ensure connection is still alive after potentially long analysis
+                    if not temp_conn.keepAlive():
+                        print("  Reconnecting after analysis...")
+                        temp_conn = conn.suConn(
+                            project["owner"], microscope_name, ttl=300000
+                        )
+
+                    try:
+                        omero_project = dump.dump_project(
+                            temp_conn,
+                            mm_project,
+                            dump_input_images=False,
+                            dump_analysis=True,
+                            dump_as_project_file_annotation=True,
+                            dump_as_dataset_file_annotation=True,
+                        )
+                        print(
+                            f"  Dumped analysis results for {project['name_project']}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to dump analysis for {project['name_project']}: {e}"
+                        )
+                        print(
+                            f"  ERROR: Failed to dump analysis for {project['name_project']}: {e}"
+                        )
                 temp_conn.close()
 
     finally:

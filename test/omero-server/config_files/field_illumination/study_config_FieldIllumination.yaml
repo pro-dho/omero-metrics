@@ -6,7 +6,7 @@ input_parameters:
     sigma: 5.0
     bit_depth: 16
 sample:
-  type: HomogeneousField
+  type: FluorescentHomogeneousThickField
   fields:
     name: Chroma Slide
     description: A set of Chroma slides with different emission spectra

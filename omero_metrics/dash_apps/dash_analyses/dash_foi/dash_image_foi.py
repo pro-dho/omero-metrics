@@ -42,22 +42,28 @@ def create_control_panel():
                         label="Channel Selection",
                         labelPosition="center",
                     ),
-                    dmc.Select(
-                        id="channel_dropdown",
-                        label="Channel",
-                        w="100%",
-                        allowDeselect=False,
-                        leftSection=my_components.get_icon(
-                            "material-symbols:layers"
+                    dmc.Tooltip(
+                        dmc.Select(
+                            id="channel_dropdown",
+                            label="Channel",
+                            w="100%",
+                            allowDeselect=False,
+                            leftSection=my_components.get_icon(
+                                "material-symbols:layers"
+                            ),
+                            rightSection=my_components.get_icon(
+                                "radix-icons:chevron-down"
+                            ),
+                            styles={
+                                "rightSection": {"pointerEvents": "none"},
+                                "item": {"fontSize": "14px"},
+                                "input": {"borderColor": THEME["primary"]},
+                            },
                         ),
-                        rightSection=my_components.get_icon(
-                            "radix-icons:chevron-down"
-                        ),
-                        styles={
-                            "rightSection": {"pointerEvents": "none"},
-                            "item": {"fontSize": "14px"},
-                            "input": {"borderColor": THEME["primary"]},
-                        },
+                        label="Select the fluorescence channel to visualize",
+                        withArrow=True,
+                        position="top-start",
+                        openDelay=400,
                     ),
                     dmc.Divider(
                         label="Display Options",
@@ -79,11 +85,17 @@ def create_control_panel():
                     ),
                     dmc.Stack(
                         [
-                            dmc.Checkbox(
-                                id="checkbox-state",
-                                label="Enable Contour View",
-                                checked=False,
-                                color=THEME["primary"],
+                            dmc.Tooltip(
+                                dmc.Checkbox(
+                                    id="checkbox-state",
+                                    label="Enable Contour View",
+                                    checked=False,
+                                    color=THEME["primary"],
+                                ),
+                                label="Overlay iso-intensity contour lines on the image",
+                                withArrow=True,
+                                position="left",
+                                openDelay=400,
                             ),
                         ],
                         gap="xs",

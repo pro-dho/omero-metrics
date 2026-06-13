@@ -4,7 +4,7 @@ from datetime import datetime
 
 import omero
 from django.shortcuts import render
-from microscopemetrics import AnalysisError, SaturationError
+from microscopemetrics import AnalysisError, DataFormatError, SaturationError
 from microscopemetrics_schema import datamodel as mm_schema
 from omero.gateway import FileAnnotationWrapper
 from omeroweb.webclient.decorators import login_required
@@ -57,9 +57,9 @@ def center_viewer_image(request, image_id, conn=None, **kwargs):
             context={"app_name": im.app_name},
         )
     except Exception as e:
+        logger.error(f"Error loading image {image_id}: {e}", exc_info=True)
         dash_context["context"] = {
-            "message": str(e),
-            "traceback": traceback.format_exc(),
+            "message": "An error occurred while loading the image. Please try again or contact support.",
         }
         request.session["django_plotly_dash"] = dash_context
         return render(
@@ -74,6 +74,11 @@ def center_viewer_project(request, project_id, conn=None, **kwargs):
     dash_context = request.session.get("django_plotly_dash", dict())
     try:
         project_wrapper = conn.getObject("Project", project_id)
+        if project_wrapper is None:
+            raise ValueError(
+                f"Project {project_id} not found. "
+                "Check that you are in the correct group."
+            )
         pm = data_managers.ProjectManager(conn, project_wrapper)
         pm.load_context()
         if pm.input_parameters is None:
@@ -114,9 +119,9 @@ def center_viewer_project(request, project_id, conn=None, **kwargs):
                 context={"app_name": "omero_project_dash"},
             )
     except Exception as e:
+        logger.error(f"Error loading project {project_id}: {e}", exc_info=True)
         dash_context["context"] = {
-            "message": str(e),
-            "traceback": traceback.format_exc(),
+            "message": "An error occurred while loading the project. Please try again or contact support.",
         }
         request.session["django_plotly_dash"] = dash_context
         return render(
@@ -136,7 +141,6 @@ def center_viewer_group(request, conn=None, **kwargs):
         else:
             active_group = conn.getEventContext().groupId
         file_ann, map_ann = load.get_annotations_tables(conn, active_group)
-        dash_context = request.session.get("django_plotly_dash", dict())
         group = conn.getObject("ExperimenterGroup", active_group)
         group_name = group.getName()
         group_description = group.getDescription()
@@ -155,9 +159,9 @@ def center_viewer_group(request, conn=None, **kwargs):
             context={"app_name": "omero_group_dash"},
         )
     except Exception as e:
+        logger.error(f"Error loading group view: {e}", exc_info=True)
         dash_context["context"] = {
-            "message": str(e),
-            "traceback": traceback.format_exc(),
+            "message": "An error occurred while loading the group view. Please try again or contact support.",
         }
         request.session["django_plotly_dash"] = dash_context
         return render(
@@ -172,6 +176,11 @@ def center_viewer_dataset(request, dataset_id, conn=None, **kwargs):
     dash_context = request.session.get("django_plotly_dash", {})
     try:
         dataset_wrapper = conn.getObject("Dataset", dataset_id)
+        if dataset_wrapper is None:
+            raise ValueError(
+                f"Dataset {dataset_id} not found. "
+                "Check that you are in the correct group."
+            )
         dm = data_managers.DatasetManager(conn, dataset_wrapper)
         dm.load_context()
         dash_context["context"] = dm.context
@@ -182,9 +191,9 @@ def center_viewer_dataset(request, dataset_id, conn=None, **kwargs):
             context={"app_name": dm.app_name},
         )
     except Exception as e:
+        logger.error(f"Error loading dataset {dataset_id}: {e}", exc_info=True)
         dash_context["context"] = {
-            "message": str(e),
-            "traceback": traceback.format_exc(),
+            "message": "An error occurred while loading the dataset. Please try again or contact support.",
         }
         request.session["django_plotly_dash"] = dash_context
         return render(
@@ -223,9 +232,12 @@ def center_view_projects(request, conn=None, **kwargs):
         )
     try:
         project_ids = [int(i) for i in id_list.split(",")]
-        data = {}
+        dash_context["context"] = {}
         for project_id in project_ids:
             project_wrapper = conn.getObject("Project", project_id)
+            if project_wrapper is None:
+                logger.warning(f"Project {project_id} not found, skipping")
+                continue
             pm = data_managers.ProjectManager(conn, project_wrapper)
             pm.load_context()
             if pm.input_parameters and pm.is_harmonized():
@@ -249,9 +261,9 @@ def center_view_projects(request, conn=None, **kwargs):
             context={"app_name": "omero_multiple_projects"},
         )
     except Exception as e:
+        logger.error(f"Error loading multiple projects: {e}", exc_info=True)
         dash_context["context"] = {
-            "message": str(e),
-            "traceback": traceback.format_exc(),
+            "message": "An error occurred while loading the projects. Please try again or contact support.",
         }
         request.session["django_plotly_dash"] = dash_context
         return render(
@@ -312,6 +324,15 @@ def run_analysis_view(request, conn=None, **kwargs):
     try:
         dataset_wrapper = conn.getObject("Dataset", kwargs["dataset_id"])
         project_wrapper = dataset_wrapper.getParent()
+
+        if not omero_tools.can_write(conn, dataset_wrapper):
+            return (
+                "authorisation_error",
+                "You don't have the necessary permissions to run this analysis. "
+                "You must be a member or owner of the group that owns this dataset.",
+                None,
+            )
+
         list_images = kwargs["list_images"]
         comment = kwargs["comment"]
         list_mm_images = [
@@ -356,9 +377,26 @@ def run_analysis_view(request, conn=None, **kwargs):
         try:
             # Run the analysis
             data_type.DATA_TYPE[mm_input_parameters.class_name][3](mm_dataset)
-        except AnalysisError or SaturationError as e:
+        except (AnalysisError, SaturationError) as e:
             logger.error(f"{e}")
             return "analysis_error", str(e), e.suggestion
+        except DataFormatError as e:
+            logger.error(f"Data format error: {e}")
+            return (
+                "analysis_error",
+                f"Data format error: {e}\n"
+                "This may indicate inconsistent pixel sizes or data shape mismatches "
+                "between images in the dataset.",
+                str(e),
+            )
+        except omero.SecurityViolation as e:
+            logger.error(f"Permission denied during analysis: {e}")
+            return (
+                "authorisation_error",
+                "You don't have the necessary permissions to run this analysis. "
+                "Contact your group owner to grant you the required access.",
+                None,
+            )
         except Exception as e:
             logger.error(f"Error running the analysis: {e}")
             return (
@@ -393,6 +431,13 @@ def run_analysis_view(request, conn=None, **kwargs):
                     "Analysis completed successfully.",
                     mm_dataset.description,
                 )
+            except omero.SecurityViolation:
+                return (
+                    "authorisation_error",
+                    "Analysis completed but you don't have the necessary permissions "
+                    "to save the results. Contact your group owner to grant you write access.",
+                    None,
+                )
             except Exception as e:
                 logger.error(f"Error saving the analysis: {e}")
                 return (
@@ -410,6 +455,14 @@ def run_analysis_view(request, conn=None, **kwargs):
                 "Please, contact support with the following traceback:",
                 traceback.format_exc(),
             )
+    except omero.SecurityViolation as e:
+        logger.error(f"Permission denied in run_analysis_view: {e}")
+        return (
+            "authorisation_error",
+            "You don't have the necessary permissions to run this analysis. "
+            "Contact your group owner to grant you the required access.",
+            None,
+        )
     except Exception as e:
         logger.error(f"Error during run_analysis_view execution: {e}")
         return (
@@ -446,6 +499,11 @@ def delete_dataset(request, conn=None, **kwargs):
     try:
         dm.delete_processed_data()
         return "success", "Output deleted successfully."
+    except (PermissionError, omero.SecurityViolation):
+        return (
+            "authorisation_error",
+            "You don't have the necessary permissions to delete this dataset's output.",
+        )
     except Exception as e:
         return "unidentified_error", str(e)
 
@@ -461,6 +519,11 @@ def delete_project(request, conn=None, **kwargs):
     try:
         pm.delete_processed_data()
         return "success", "Output deleted successfully."
+    except (PermissionError, omero.SecurityViolation):
+        return (
+            "authorisation_error",
+            "You don't have the necessary permissions to delete this project's output.",
+        )
     except Exception as e:
         return "unidentified_error", str(e)
 

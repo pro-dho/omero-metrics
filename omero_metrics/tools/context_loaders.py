@@ -163,12 +163,20 @@ def PSFBeadsDataset_input_data_Image(im):
 def PSFBeadsDataset_output_AveragePSF(im):
     im.mm_image = load.load_image(im.omero_image, load_array=True)
 
+    # array_data shape: (T, Z, Y, X, C) — crop Z to central 50% for
+    # X/Y MIPs to reduce whitespace around the bead (upstream #23)
+    data = im.mm_image.array_data[0, ...]  # (Z, Y, X, C)
+    z_size = data.shape[0]
+    z_start = z_size // 4
+    z_end = z_size - z_size // 4
+    z_cropped = data[z_start:z_end, ...]
+
     mips = {
         "x": np.flipud(
-            np.transpose(np.max(im.mm_image.array_data[0, ...], axis=2), (1, 0, 2))
+            np.transpose(np.max(z_cropped, axis=2), (1, 0, 2))
         ),
-        "y": np.max(im.mm_image.array_data[0, ...], axis=1),
-        "z": np.flipud(np.max(im.mm_image.array_data[0, ...], axis=0)),
+        "y": np.max(z_cropped, axis=1),
+        "z": np.flipud(np.max(data, axis=0)),  # Z projection uses full data
     }
     mips = {a: np.sqrt(mip) for a, mip in mips.items()}
 
@@ -213,6 +221,11 @@ def FieldIlluminationDataset(dm):
     # Pre-compute tables once (avoid re-computing in every callback)
     key_measurements_df = _precompute_key_measurements(dm.mm_dataset)
     intensity_profiles = _precompute_intensity_profiles(dm.mm_dataset)
+
+    # Clear array_data from input images after extraction so mm_dataset
+    # can be serialized/dumped without numpy arrays (same pattern as PSF)
+    for img in dm.mm_dataset.input_data.field_illumination_images:
+        img.array_data = None
 
     context = {
         **_extract_dataset_meta(dm.mm_dataset),
@@ -315,6 +328,8 @@ def HarmonizedMetricsDatasetCollection(pm):
     context = {
         "project_id": int(pm.omero_project.getId()),
         "project_name": pm.omero_project.getName(),
+        "dataset_class": pm.mm_dataset_collection.dataset_class,
+        "mm_dataset_collection": pm.mm_dataset_collection,
         "key_measurements_by_kkm": collection_key_measurements_by_kkm,
         "key_measurements_by_dataset_id": collection_key_measurements_by_dataset_id,
         "channels": list(channels),

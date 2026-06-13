@@ -561,7 +561,6 @@ def _eval(s):
 
 def _eval_types(table: mm_schema.Table):
     for column in table.columns.values():
-        breakpoint()
         column.values = [_eval(v) for v in column.values]
     return table
 
